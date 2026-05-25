@@ -177,9 +177,6 @@ fn extract_bytes<'a>(buffer: &'a [u8], idx: &mut usize, size: usize) -> RESPResu
 
 #[cfg(test)]
 mod test {
-    use core::panic;
-    use std::marker::PhantomPinned;
-
     use super::*;
 
     #[test]
