@@ -4,6 +4,8 @@ use tokio::net::{TcpListener, TcpStream};
 pub mod parse;
 use parse::parse_input;
 
+use crate::parse::Command;
+
 const ADDRESS: &str = "127.0.0.1:6379";
 const BUF_SIZE: usize = 512;
 
@@ -14,6 +16,7 @@ async fn main() -> std::io::Result<()> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
+                println!("Connection accepted");
                 tokio::spawn(handle_connection(stream));
             }
             Err(e) => {
@@ -30,12 +33,22 @@ async fn handle_connection(mut stream: TcpStream) {
     loop {
         match stream.read(&mut buffer).await {
             Ok(size) if size > 0 => {
-                // println!("Received: {:?}", buffer);
+                println!("Received: {:?}", buffer);
 
-                let response = "+PONG\r\n";
+                let cmd = parse_input(&buffer);
+
+                let response = {
+                    match cmd {
+                        Ok(Command::Ping) => "+PONG\r\n",
+                        Ok(Command::Echo(s)) => &format!("${}\r\n{}\r\n", s.len(), s),
+                        Err(e) => {
+                            println!("Error: {e:?}");
+                            "+Error: Invalid Command\r\n"},
+                    }
+                };
 
                 if let Err(e) = stream.write_all(response.as_bytes()).await {
-                    eprintln!("Error writing to socket: {e}");
+                    println!("Error writing to socket: {e}");
                 }
             }
             Ok(_) => {
