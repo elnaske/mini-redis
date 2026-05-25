@@ -3,14 +3,27 @@ use std::fmt;
 #[derive(Debug, PartialEq)]
 pub enum RESPError {
     OutOfBounds(usize),
-    Expected { expected: u8, found: u8 },
     InvalidPrefix(u8),
     InvalidCommand(String),
     InvalidSize(i32),
     ParseSize(String),
+    MissingArg { after: String },
     CommandError,
 }
 type RESPResult<T> = Result<T, RESPError>;
+impl fmt::Display for RESPError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::OutOfBounds(idx) => write!(f, "Index {} out of bounds", idx),
+            Self::InvalidPrefix(c) => write!(f, "Invalid type prefix: {}", *c as char),
+            Self::InvalidCommand(cmd) => write!(f, "Invalid command: {}", cmd),
+            Self::InvalidSize(s) => write!(f, "Invalid length specifier: {}", s),
+            Self::ParseSize(s) => write!(f, "Couldn't parse `{}` to an integer", s),
+            Self::MissingArg { after } => write!(f, "Expected argument after `{}`", after),
+            Self::CommandError => write!(f, "Command error"),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum RESPType {
@@ -106,6 +119,8 @@ impl fmt::Display for RESPType {
 pub enum Command {
     Ping,
     Echo(String),
+    Set { key: String, value: String },
+    Get(String),
 }
 impl Command {
     pub fn parse(request: Vec<RESPType>) -> RESPResult<Self> {
@@ -113,13 +128,44 @@ impl Command {
         let mut idx = 0;
         match request.get(idx) {
             Some(RESPType::BulkString(s)) => match &s.to_uppercase()[..] {
-                "PING" => Ok(Command::Ping),
+                "PING" => Ok(Self::Ping),
                 "ECHO" => {
                     idx += 1;
                     match request.get(idx) {
-                        Some(RESPType::BulkString(s)) => Ok(Command::Echo(s.to_string())),
+                        Some(RESPType::BulkString(s)) => Ok(Self::Echo(s.to_string())),
                         Some(_) => Err(RESPError::CommandError),
-                        None => Err(RESPError::OutOfBounds(idx)),
+                        None => Err(RESPError::MissingArg {
+                            after: "ECHO".to_string(),
+                        }),
+                    }
+                }
+                "SET" => {
+                    idx += 1;
+                    let key = match request.get(idx) {
+                        Some(RESPType::BulkString(s)) => Ok(s.to_string()),
+                        Some(_) => Err(RESPError::CommandError),
+                        None => Err(RESPError::MissingArg {
+                            after: "SET".to_string(),
+                        }),
+                    }?;
+
+                    idx += 1;
+                    let value = match request.get(idx) {
+                        Some(RESPType::BulkString(s)) => Ok(s.to_string()),
+                        Some(_) => Err(RESPError::CommandError),
+                        None => Err(RESPError::MissingArg { after: key.clone() }),
+                    }?;
+
+                    Ok(Self::Set { key, value })
+                }
+                "GET" => {
+                    idx += 1;
+                    match request.get(idx) {
+                        Some(RESPType::BulkString(s)) => Ok(Self::Get(s.to_string())),
+                        Some(_) => Err(RESPError::CommandError),
+                        None => Err(RESPError::MissingArg {
+                            after: "GET".to_string(),
+                        }),
                     }
                 }
                 _ => Err(RESPError::InvalidCommand(s.to_string())),
@@ -345,6 +391,33 @@ mod test {
         ])
         .unwrap();
         assert_eq!(cmd, Command::Echo("hello".to_string()));
+    }
+
+    #[test]
+    fn command_set() {
+        let cmd = Command::parse(vec![
+            RESPType::BulkString("SET".to_string()),
+            RESPType::BulkString("hello".to_string()),
+            RESPType::BulkString("world".to_string()),
+        ])
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Set {
+                key: "hello".to_string(),
+                value: "world".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn command_get() {
+        let cmd = Command::parse(vec![
+            RESPType::BulkString("GET".to_string()),
+            RESPType::BulkString("hello".to_string()),
+        ])
+        .unwrap();
+        assert_eq!(cmd, Command::Get("hello".to_string()));
     }
 
     #[test]
