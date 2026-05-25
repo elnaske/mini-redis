@@ -43,7 +43,8 @@ async fn handle_connection(mut stream: TcpStream) {
                         Ok(Command::Echo(s)) => &format!("${}\r\n{}\r\n", s.len(), s),
                         Err(e) => {
                             println!("Error: {e:?}");
-                            "+Error: Invalid Command\r\n"},
+                            "+Error: Invalid Command\r\n"
+                        }
                     }
                 };
 
