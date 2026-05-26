@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 pub mod parse;
 use parse::parse_input;
 
-use crate::parse::Command;
+pub mod commands;
+use crate::commands::Command;
 
 const ADDRESS: &str = "127.0.0.1:6379";
 const BUF_SIZE: usize = 512;
