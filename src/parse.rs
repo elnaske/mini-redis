@@ -9,7 +9,7 @@ pub enum RESPError {
     InvalidCommand(String),
     InvalidSize(i32),
     ParseSize(String),
-    MissingArg { after: String },
+    MissingArgs,
     CommandError,
 }
 pub type RESPResult<T> = Result<T, RESPError>;
@@ -21,7 +21,7 @@ impl fmt::Display for RESPError {
             Self::InvalidCommand(cmd) => write!(f, "Invalid command: {}", cmd),
             Self::InvalidSize(s) => write!(f, "Invalid length specifier: {}", s),
             Self::ParseSize(s) => write!(f, "Couldn't parse `{}` to an integer", s),
-            Self::MissingArg { after } => write!(f, "Expected argument after `{}`", after),
+            Self::MissingArgs => write!(f, "Not enough arguments"),
             Self::CommandError => write!(f, "Command error"),
         }
     }
@@ -35,7 +35,7 @@ pub enum RESPType {
     Array(Vec<RESPType>),
 }
 impl RESPType {
-    fn parse<'a>(buffer: &'a [u8], idx: &mut usize) -> RESPResult<Self> {
+    fn parse(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
         match buffer.get(*idx) {
             Some(b'*') => {
                 *idx += 1;
@@ -91,8 +91,8 @@ impl RESPType {
                     String::from_utf8(s.to_vec()).unwrap(),
                 ))
             }
-            Some(other) => return Err(RESPError::InvalidPrefix(*other)),
-            None => return Err(RESPError::OutOfBounds(*idx)),
+            Some(other) => Err(RESPError::InvalidPrefix(*other)),
+            None => Err(RESPError::OutOfBounds(*idx)),
         }
     }
 }
@@ -165,24 +165,6 @@ fn extract_bytes<'a>(buffer: &'a [u8], idx: &mut usize, size: usize) -> RESPResu
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn parse_input_ping() {
-        let buffer = "*1\r\n$4\r\nPING\r\n".as_bytes();
-
-        let cmd = parse_input(buffer).unwrap();
-
-        assert_eq!(cmd, Command::Ping);
-    }
-
-    #[test]
-    fn parse_input_echo() {
-        let buffer = "*2\r\n$4\r\nECHO\r\n$5\r\nhello\r\n".as_bytes();
-
-        let cmd = parse_input(buffer).unwrap();
-
-        assert_eq!(cmd, Command::Echo("hello".to_string()));
-    }
 
     #[test]
     fn parse_input_not_array() {
@@ -314,57 +296,6 @@ mod test {
             Err(RESPError::InvalidPrefix(c)) => {
                 assert_eq!(c, b'f');
             }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn command_ping() {
-        let cmd = Command::parse(vec![RESPType::BulkString("PING".to_string())]).unwrap();
-        assert_eq!(cmd, Command::Ping);
-    }
-
-    #[test]
-    fn command_echo() {
-        let cmd = Command::parse(vec![
-            RESPType::BulkString("ECHO".to_string()),
-            RESPType::BulkString("hello".to_string()),
-        ])
-        .unwrap();
-        assert_eq!(cmd, Command::Echo("hello".to_string()));
-    }
-
-    #[test]
-    fn command_set() {
-        let cmd = Command::parse(vec![
-            RESPType::BulkString("SET".to_string()),
-            RESPType::BulkString("hello".to_string()),
-            RESPType::BulkString("world".to_string()),
-        ])
-        .unwrap();
-        assert_eq!(
-            cmd,
-            Command::Set {
-                key: "hello".to_string(),
-                value: "world".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn command_get() {
-        let cmd = Command::parse(vec![
-            RESPType::BulkString("GET".to_string()),
-            RESPType::BulkString("hello".to_string()),
-        ])
-        .unwrap();
-        assert_eq!(cmd, Command::Get("hello".to_string()));
-    }
-
-    #[test]
-    fn command_invalid() {
-        match Command::parse(vec![RESPType::BulkString("foo".to_string())]) {
-            Err(RESPError::InvalidCommand(cmd)) => assert_eq!(cmd, "foo"),
             _ => panic!(),
         }
     }

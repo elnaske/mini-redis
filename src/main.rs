@@ -1,8 +1,8 @@
 pub mod server;
 use server::Server;
 
-pub mod parse;
 pub mod commands;
+pub mod parse;
 
 const ADDRESS: &str = "127.0.0.1:6379";
 
