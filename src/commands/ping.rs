@@ -1,6 +1,6 @@
 use super::as_simple_string;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Ping {}
 impl Ping {
     pub fn new() -> Self {

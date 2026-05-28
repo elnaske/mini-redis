@@ -36,64 +36,67 @@ pub enum RESPType {
 }
 impl RESPType {
     fn parse(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
-        match buffer.get(*idx) {
-            Some(b'*') => {
-                *idx += 1;
-                let size = {
-                    let chars = extract_line(buffer, idx)?;
-                    String::from_utf8_lossy(chars)
-                };
-
-                match size.parse::<usize>() {
-                    Ok(size) => {
-                        let mut arr = Vec::<RESPType>::new();
-
-                        for _ in 0..size {
-                            arr.push(RESPType::parse(buffer, idx)?);
-                        }
-
-                        Ok(RESPType::Array(arr))
-                    }
-                    Err(_) => Err(RESPError::ParseSize(size.to_string())),
-                }
-            }
-            Some(b'$') => {
-                *idx += 1;
-                let size = {
-                    let chars = extract_line(buffer, idx)?;
-                    String::from_utf8_lossy(chars)
-                };
-
-                match size.parse::<i32>() {
-                    Ok(size) => {
-                        if size >= 0 {
-                            let size = size as usize;
-                            let chars = extract_bytes(buffer, idx, size)?;
-
-                            *idx += 2; // skip \r\n
-
-                            Ok(RESPType::BulkString(
-                                String::from_utf8(chars.to_vec()).unwrap(),
-                            ))
-                        } else if size == -1 {
-                            Ok(RESPType::NullString)
-                        } else {
-                            Err(RESPError::InvalidSize(size))
-                        }
-                    }
-                    Err(_) => Err(RESPError::ParseSize(size.to_string())),
-                }
-            }
-            Some(b'+') => {
-                *idx += 1;
-                let s = extract_line(buffer, idx)?;
-                Ok(RESPType::SimpleString(
-                    String::from_utf8(s.to_vec()).unwrap(),
-                ))
-            }
-            Some(other) => Err(RESPError::InvalidPrefix(*other)),
+        match advance(buffer, idx) {
+            Some(b'*') => Self::parse_arr(buffer, idx),
+            Some(b'$') => Self::parse_bulk_string(buffer, idx),
+            Some(b'+') => Self::parse_simple_string(buffer, idx),
+            Some(other) => Err(RESPError::InvalidPrefix(other)),
             None => Err(RESPError::OutOfBounds(*idx)),
         }
+    }
+
+    fn parse_arr(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
+        let size = {
+            let chars = extract_line(buffer, idx)?;
+            String::from_utf8_lossy(chars)
+        };
+
+        match size.parse::<usize>() {
+            Ok(size) => {
+                let mut arr = Vec::<RESPType>::new();
+
+                for _ in 0..size {
+                    arr.push(RESPType::parse(buffer, idx)?);
+                }
+
+                Ok(RESPType::Array(arr))
+            }
+            Err(_) => Err(RESPError::ParseSize(size.to_string())),
+        }
+    }
+
+    fn parse_bulk_string(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
+        let size = {
+            let chars = extract_line(buffer, idx)?;
+            String::from_utf8_lossy(chars)
+        };
+
+        match size.parse::<i32>() {
+            Ok(size) => {
+                if size >= 0 {
+                    let size = size as usize;
+                    let chars = extract_bytes(buffer, idx, size)?;
+
+                    *idx += 2; // skip \r\n
+
+                    Ok(RESPType::BulkString(
+                        String::from_utf8(chars.to_vec()).unwrap(),
+                    ))
+                } else if size == -1 {
+                    Ok(RESPType::NullString)
+                } else {
+                    Err(RESPError::InvalidSize(size))
+                }
+            }
+            Err(_) => Err(RESPError::ParseSize(size.to_string())),
+        }
+    }
+
+    fn parse_simple_string(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
+        let s = extract_line(buffer, idx)?;
+        Ok(RESPType::SimpleString(
+            String::from_utf8(s.to_vec()).unwrap(),
+        ))
     }
 }
 impl fmt::Display for RESPType {
@@ -114,6 +117,16 @@ impl fmt::Display for RESPType {
                 )
             }
         }
+    }
+}
+
+fn advance(buffer: &[u8], idx: &mut usize) -> Option<u8> {
+    match buffer.get(*idx) {
+        Some(value) => {
+            *idx += 1;
+            Some(*value)
+        }
+        None => None,
     }
 }
 
