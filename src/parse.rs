@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::commands::Command;
+
 #[derive(Debug, PartialEq)]
 pub enum RESPError {
     OutOfBounds(usize),
@@ -7,10 +9,10 @@ pub enum RESPError {
     InvalidCommand(String),
     InvalidSize(i32),
     ParseSize(String),
-    MissingArg { after: String },
+    MissingArgs,
     CommandError,
 }
-type RESPResult<T> = Result<T, RESPError>;
+pub type RESPResult<T> = Result<T, RESPError>;
 impl fmt::Display for RESPError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -19,7 +21,7 @@ impl fmt::Display for RESPError {
             Self::InvalidCommand(cmd) => write!(f, "Invalid command: {}", cmd),
             Self::InvalidSize(s) => write!(f, "Invalid length specifier: {}", s),
             Self::ParseSize(s) => write!(f, "Couldn't parse `{}` to an integer", s),
-            Self::MissingArg { after } => write!(f, "Expected argument after `{}`", after),
+            Self::MissingArgs => write!(f, "Not enough arguments"),
             Self::CommandError => write!(f, "Command error"),
         }
     }
@@ -33,65 +35,68 @@ pub enum RESPType {
     Array(Vec<RESPType>),
 }
 impl RESPType {
-    fn parse<'a>(buffer: &'a [u8], idx: &mut usize) -> RESPResult<Self> {
-        match buffer.get(*idx) {
-            Some(b'*') => {
-                *idx += 1;
-                let size = {
-                    let chars = extract_line(buffer, idx)?;
-                    String::from_utf8_lossy(chars)
-                };
-
-                match size.parse::<usize>() {
-                    Ok(size) => {
-                        let mut arr = Vec::<RESPType>::new();
-
-                        for _ in 0..size {
-                            arr.push(RESPType::parse(buffer, idx)?);
-                        }
-
-                        Ok(RESPType::Array(arr))
-                    }
-                    Err(_) => Err(RESPError::ParseSize(size.to_string())),
-                }
-            }
-            Some(b'$') => {
-                *idx += 1;
-                let size = {
-                    let chars = extract_line(buffer, idx)?;
-                    String::from_utf8_lossy(chars)
-                };
-
-                match size.parse::<i32>() {
-                    Ok(size) => {
-                        if size >= 0 {
-                            let size = size as usize;
-                            let chars = extract_bytes(buffer, idx, size)?;
-
-                            *idx += 2; // skip \r\n
-
-                            Ok(RESPType::BulkString(
-                                String::from_utf8(chars.to_vec()).unwrap(),
-                            ))
-                        } else if size == -1 {
-                            Ok(RESPType::NullString)
-                        } else {
-                            Err(RESPError::InvalidSize(size))
-                        }
-                    }
-                    Err(_) => Err(RESPError::ParseSize(size.to_string())),
-                }
-            }
-            Some(b'+') => {
-                *idx += 1;
-                let s = extract_line(buffer, idx)?;
-                Ok(RESPType::SimpleString(
-                    String::from_utf8(s.to_vec()).unwrap(),
-                ))
-            }
-            Some(other) => return Err(RESPError::InvalidPrefix(*other)),
-            None => return Err(RESPError::OutOfBounds(*idx)),
+    fn parse(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
+        match advance(buffer, idx) {
+            Some(b'*') => Self::parse_arr(buffer, idx),
+            Some(b'$') => Self::parse_bulk_string(buffer, idx),
+            Some(b'+') => Self::parse_simple_string(buffer, idx),
+            Some(other) => Err(RESPError::InvalidPrefix(other)),
+            None => Err(RESPError::OutOfBounds(*idx)),
         }
+    }
+
+    fn parse_arr(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
+        let size = {
+            let chars = extract_line(buffer, idx)?;
+            String::from_utf8_lossy(chars)
+        };
+
+        match size.parse::<usize>() {
+            Ok(size) => {
+                let mut arr = Vec::<RESPType>::new();
+
+                for _ in 0..size {
+                    arr.push(RESPType::parse(buffer, idx)?);
+                }
+
+                Ok(RESPType::Array(arr))
+            }
+            Err(_) => Err(RESPError::ParseSize(size.to_string())),
+        }
+    }
+
+    fn parse_bulk_string(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
+        let size = {
+            let chars = extract_line(buffer, idx)?;
+            String::from_utf8_lossy(chars)
+        };
+
+        match size.parse::<i32>() {
+            Ok(size) => {
+                if size >= 0 {
+                    let size = size as usize;
+                    let chars = extract_bytes(buffer, idx, size)?;
+
+                    *idx += 2; // skip \r\n
+
+                    Ok(RESPType::BulkString(
+                        String::from_utf8(chars.to_vec()).unwrap(),
+                    ))
+                } else if size == -1 {
+                    Ok(RESPType::NullString)
+                } else {
+                    Err(RESPError::InvalidSize(size))
+                }
+            }
+            Err(_) => Err(RESPError::ParseSize(size.to_string())),
+        }
+    }
+
+    fn parse_simple_string(buffer: &[u8], idx: &mut usize) -> RESPResult<Self> {
+        let s = extract_line(buffer, idx)?;
+        Ok(RESPType::SimpleString(
+            String::from_utf8(s.to_vec()).unwrap(),
+        ))
     }
 }
 impl fmt::Display for RESPType {
@@ -115,64 +120,13 @@ impl fmt::Display for RESPType {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Command {
-    Ping,
-    Echo(String),
-    Set { key: String, value: String },
-    Get(String),
-}
-impl Command {
-    pub fn parse(request: Vec<RESPType>) -> RESPResult<Self> {
-        // println!("{request:?}");
-        let mut idx = 0;
-        match request.get(idx) {
-            Some(RESPType::BulkString(s)) => match &s.to_uppercase()[..] {
-                "PING" => Ok(Self::Ping),
-                "ECHO" => {
-                    idx += 1;
-                    match request.get(idx) {
-                        Some(RESPType::BulkString(s)) => Ok(Self::Echo(s.to_string())),
-                        Some(_) => Err(RESPError::CommandError),
-                        None => Err(RESPError::MissingArg {
-                            after: "ECHO".to_string(),
-                        }),
-                    }
-                }
-                "SET" => {
-                    idx += 1;
-                    let key = match request.get(idx) {
-                        Some(RESPType::BulkString(s)) => Ok(s.to_string()),
-                        Some(_) => Err(RESPError::CommandError),
-                        None => Err(RESPError::MissingArg {
-                            after: "SET".to_string(),
-                        }),
-                    }?;
-
-                    idx += 1;
-                    let value = match request.get(idx) {
-                        Some(RESPType::BulkString(s)) => Ok(s.to_string()),
-                        Some(_) => Err(RESPError::CommandError),
-                        None => Err(RESPError::MissingArg { after: key.clone() }),
-                    }?;
-
-                    Ok(Self::Set { key, value })
-                }
-                "GET" => {
-                    idx += 1;
-                    match request.get(idx) {
-                        Some(RESPType::BulkString(s)) => Ok(Self::Get(s.to_string())),
-                        Some(_) => Err(RESPError::CommandError),
-                        None => Err(RESPError::MissingArg {
-                            after: "GET".to_string(),
-                        }),
-                    }
-                }
-                _ => Err(RESPError::InvalidCommand(s.to_string())),
-            },
-            Some(_) => unimplemented!(),
-            None => return Err(RESPError::OutOfBounds(idx)),
+fn advance(buffer: &[u8], idx: &mut usize) -> Option<u8> {
+    match buffer.get(*idx) {
+        Some(value) => {
+            *idx += 1;
+            Some(*value)
         }
+        None => None,
     }
 }
 
@@ -224,24 +178,6 @@ fn extract_bytes<'a>(buffer: &'a [u8], idx: &mut usize, size: usize) -> RESPResu
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn parse_input_ping() {
-        let buffer = "*1\r\n$4\r\nPING\r\n".as_bytes();
-
-        let cmd = parse_input(buffer).unwrap();
-
-        assert_eq!(cmd, Command::Ping);
-    }
-
-    #[test]
-    fn parse_input_echo() {
-        let buffer = "*2\r\n$4\r\nECHO\r\n$5\r\nhello\r\n".as_bytes();
-
-        let cmd = parse_input(buffer).unwrap();
-
-        assert_eq!(cmd, Command::Echo("hello".to_string()));
-    }
 
     #[test]
     fn parse_input_not_array() {
@@ -373,57 +309,6 @@ mod test {
             Err(RESPError::InvalidPrefix(c)) => {
                 assert_eq!(c, b'f');
             }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn command_ping() {
-        let cmd = Command::parse(vec![RESPType::BulkString("PING".to_string())]).unwrap();
-        assert_eq!(cmd, Command::Ping);
-    }
-
-    #[test]
-    fn command_echo() {
-        let cmd = Command::parse(vec![
-            RESPType::BulkString("ECHO".to_string()),
-            RESPType::BulkString("hello".to_string()),
-        ])
-        .unwrap();
-        assert_eq!(cmd, Command::Echo("hello".to_string()));
-    }
-
-    #[test]
-    fn command_set() {
-        let cmd = Command::parse(vec![
-            RESPType::BulkString("SET".to_string()),
-            RESPType::BulkString("hello".to_string()),
-            RESPType::BulkString("world".to_string()),
-        ])
-        .unwrap();
-        assert_eq!(
-            cmd,
-            Command::Set {
-                key: "hello".to_string(),
-                value: "world".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn command_get() {
-        let cmd = Command::parse(vec![
-            RESPType::BulkString("GET".to_string()),
-            RESPType::BulkString("hello".to_string()),
-        ])
-        .unwrap();
-        assert_eq!(cmd, Command::Get("hello".to_string()));
-    }
-
-    #[test]
-    fn command_invalid() {
-        match Command::parse(vec![RESPType::BulkString("foo".to_string())]) {
-            Err(RESPError::InvalidCommand(cmd)) => assert_eq!(cmd, "foo"),
             _ => panic!(),
         }
     }
