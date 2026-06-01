@@ -7,6 +7,10 @@ impl Ping {
         Ping {}
     }
 
+    pub fn to_resp(self) -> String {
+        String::from("*1\r\n$4\r\nPING\r\n")
+    }
+
     pub fn execute(self) -> String {
         as_simple_string("PONG")
     }

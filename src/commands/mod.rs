@@ -36,6 +36,15 @@ impl Command {
         }
     }
 
+    pub fn to_resp(self) -> String {
+        match self {
+            Self::Ping(ping) => ping.to_resp(),
+            Self::Echo(echo) => echo.to_resp(),
+            Self::Set(set) => set.to_resp(),
+            Self::Get(get) => get.to_resp(),
+        }
+    }
+
     pub fn execute(self, db: &DB) -> String {
         match self {
             Self::Ping(ping) => ping.execute(),
@@ -43,6 +52,7 @@ impl Command {
             Self::Set(set) => set.execute(db),
             Self::Get(get) => get.execute(db),
         }
+        // return response
     }
 }
 

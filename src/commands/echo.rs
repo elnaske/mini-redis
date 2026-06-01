@@ -18,6 +18,14 @@ impl Echo {
         }
     }
 
+    pub fn to_resp(self) -> String {
+        format!(
+            "*2\r\n$4\r\nECHO\r\n${}\r\n{}\r\n",
+            self.msg.len(),
+            self.msg
+        )
+    }
+
     pub fn execute(self) -> String {
         as_bulk_string(&self.msg)
     }

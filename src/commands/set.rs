@@ -24,6 +24,16 @@ impl Set {
         }
     }
 
+    pub fn to_resp(self) -> String {
+        format!(
+            "*3\r\n$3\r\nSET\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
+            self.key.len(),
+            self.key,
+            self.value.len(),
+            self.value
+        )
+    }
+
     pub fn execute(self, db: &DB) -> String {
         let mut db = db.lock().unwrap();
         db.insert(self.key, self.value);

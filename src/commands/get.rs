@@ -19,7 +19,11 @@ impl Get {
         }
     }
 
-    pub fn execute(&self, db: &DB) -> String {
+    pub fn to_resp(self) -> String {
+        format!("*2\r\n$3\r\nGET\r\n${}\r\n{}\r\n", self.key.len(), self.key)
+    }
+
+    pub fn execute(self, db: &DB) -> String {
         let db = db.lock().unwrap();
         match db.get(&self.key) {
             Some(value) => as_bulk_string(value),
