@@ -18,7 +18,7 @@ impl Set {
         } else if let RESPType::BulkString(k) = &request[1]
             && let RESPType::BulkString(v) = &request[2]
         {
-            Ok(Set::new(k.to_string(), v.to_string()))
+            Ok(Set::new(k.to_owned(), v.to_owned()))
         } else {
             Err(RESPError::CommandError)
         }

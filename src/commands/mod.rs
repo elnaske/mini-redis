@@ -29,7 +29,7 @@ impl Command {
                 "ECHO" => Ok(Self::Echo(Echo::parse(&request)?)),
                 "SET" => Ok(Self::Set(Set::parse(&request)?)),
                 "GET" => Ok(Self::Get(Get::parse(&request)?)),
-                _ => Err(RESPError::InvalidCommand(s.to_string())),
+                _ => Err(RESPError::InvalidCommand(s.to_owned())),
             },
             Some(_) => unimplemented!(),
             None => Err(RESPError::MissingArgs),
@@ -70,47 +70,47 @@ mod test {
 
     #[test]
     fn command_ping() {
-        let cmd = Command::parse(vec![RESPType::BulkString("PING".to_string())]).unwrap();
+        let cmd = Command::parse(vec![RESPType::BulkString(String::from("PING"))]).unwrap();
         assert_eq!(cmd, Command::Ping(Ping::new()));
     }
 
     #[test]
     fn command_echo() {
         let cmd = Command::parse(vec![
-            RESPType::BulkString("ECHO".to_string()),
-            RESPType::BulkString("hello".to_string()),
+            RESPType::BulkString(String::from("ECHO")),
+            RESPType::BulkString(String::from("hello")),
         ])
         .unwrap();
-        assert_eq!(cmd, Command::Echo(Echo::new("hello".to_string())));
+        assert_eq!(cmd, Command::Echo(Echo::new(String::from("hello"))));
     }
 
     #[test]
     fn command_set() {
         let cmd = Command::parse(vec![
-            RESPType::BulkString("SET".to_string()),
-            RESPType::BulkString("hello".to_string()),
-            RESPType::BulkString("world".to_string()),
+            RESPType::BulkString(String::from("SET")),
+            RESPType::BulkString(String::from("hello")),
+            RESPType::BulkString(String::from("world")),
         ])
         .unwrap();
         assert_eq!(
             cmd,
-            Command::Set(Set::new("hello".to_string(), "world".to_string()))
+            Command::Set(Set::new(String::from("hello"), String::from("world")))
         );
     }
 
     #[test]
     fn command_get() {
         let cmd = Command::parse(vec![
-            RESPType::BulkString("GET".to_string()),
-            RESPType::BulkString("hello".to_string()),
+            RESPType::BulkString(String::from("GET")),
+            RESPType::BulkString(String::from("hello")),
         ])
         .unwrap();
-        assert_eq!(cmd, Command::Get(Get::new("hello".to_string())));
+        assert_eq!(cmd, Command::Get(Get::new(String::from("hello"))));
     }
 
     #[test]
     fn command_invalid() {
-        match Command::parse(vec![RESPType::BulkString("foo".to_string())]) {
+        match Command::parse(vec![RESPType::BulkString(String::from("foo"))]) {
             Err(RESPError::InvalidCommand(cmd)) => assert_eq!(cmd, "foo"),
             _ => panic!(),
         }

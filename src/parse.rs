@@ -196,7 +196,7 @@ mod test {
 
         let ty = RESPType::parse(buffer, &mut idx).unwrap();
 
-        assert_eq!(ty, RESPType::SimpleString("OK".to_string()));
+        assert_eq!(ty, RESPType::SimpleString(String::from("OK")));
     }
 
     #[test]
@@ -206,7 +206,7 @@ mod test {
 
         let ty = RESPType::parse(buffer, &mut idx).unwrap();
 
-        assert_eq!(ty, RESPType::BulkString("OK".to_string()));
+        assert_eq!(ty, RESPType::BulkString(String::from("OK")));
     }
 
     #[test]
@@ -268,8 +268,8 @@ mod test {
         assert_eq!(
             ty,
             RESPType::Array(vec![
-                RESPType::BulkString("ECHO".to_string()),
-                RESPType::BulkString("hello".to_string())
+                RESPType::BulkString(String::from("ECHO")),
+                RESPType::BulkString(String::from("hello"))
             ])
         );
     }
