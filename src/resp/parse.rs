@@ -1,31 +1,7 @@
 use std::fmt;
 
 use crate::commands::Command;
-
-#[derive(Debug, PartialEq)]
-pub enum RESPError {
-    OutOfBounds(usize),
-    InvalidPrefix(u8),
-    InvalidCommand(String),
-    InvalidSize(i32),
-    ParseSize(String),
-    MissingArgs,
-    CommandError,
-}
-pub type RESPResult<T> = Result<T, RESPError>;
-impl fmt::Display for RESPError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::OutOfBounds(idx) => write!(f, "Index {} out of bounds", idx),
-            Self::InvalidPrefix(c) => write!(f, "Invalid type prefix: {}", *c as char),
-            Self::InvalidCommand(cmd) => write!(f, "Invalid command: {}", cmd),
-            Self::InvalidSize(s) => write!(f, "Invalid length specifier: {}", s),
-            Self::ParseSize(s) => write!(f, "Couldn't parse `{}` to an integer", s),
-            Self::MissingArgs => write!(f, "Not enough arguments"),
-            Self::CommandError => write!(f, "Command error"),
-        }
-    }
-}
+use crate::resp::errors::{RESPError, RESPResult};
 
 #[derive(Debug, PartialEq)]
 pub enum RESPType {
@@ -130,7 +106,7 @@ fn advance(buffer: &[u8], idx: &mut usize) -> Option<u8> {
     }
 }
 
-pub fn parse_input(buffer: &[u8]) -> RESPResult<Command> {
+pub fn parse_request(buffer: &[u8]) -> RESPResult<Command> {
     let mut idx = 0;
 
     let request = match RESPType::parse(buffer, &mut idx) {
@@ -141,6 +117,14 @@ pub fn parse_input(buffer: &[u8]) -> RESPResult<Command> {
 
     let cmd = Command::parse(request)?;
     Ok(cmd)
+}
+
+pub fn parse_response(buffer: &[u8]) -> RESPResult<RESPType> {
+    let mut idx = 0;
+
+    let response = RESPType::parse(buffer, &mut idx)?;
+
+    Ok(response)
 }
 
 fn extract_line<'a>(buffer: &'a [u8], idx: &mut usize) -> RESPResult<&'a [u8]> {
@@ -183,7 +167,7 @@ mod test {
     fn parse_input_not_array() {
         let buffer = "$4\r\nPING\r\n".as_bytes();
 
-        match parse_input(buffer) {
+        match parse_request(buffer) {
             Err(e) => assert_eq!(e, RESPError::CommandError),
             _ => panic!(),
         }

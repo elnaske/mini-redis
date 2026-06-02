@@ -1,5 +1,6 @@
 use super::as_bulk_string;
-use crate::parse::{RESPError, RESPResult, RESPType};
+use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::parse::RESPType;
 use crate::server::DB;
 
 #[derive(Debug, PartialEq)]
@@ -19,8 +20,11 @@ impl Get {
         }
     }
 
-    pub fn to_resp(self) -> String {
-        format!("*2\r\n$3\r\nGET\r\n${}\r\n{}\r\n", self.key.len(), self.key)
+    pub fn to_resp(self) -> RESPType {
+        RESPType::Array(vec![
+            RESPType::BulkString(String::from("GET")),
+            RESPType::BulkString(self.key),
+        ])
     }
 
     pub fn execute(self, db: &DB) -> String {

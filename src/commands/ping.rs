@@ -1,3 +1,5 @@
+use crate::resp::parse::RESPType;
+
 use super::as_simple_string;
 
 #[derive(Debug, PartialEq, Default)]
@@ -7,8 +9,8 @@ impl Ping {
         Ping {}
     }
 
-    pub fn to_resp(self) -> String {
-        String::from("*1\r\n$4\r\nPING\r\n")
+    pub fn to_resp(self) -> RESPType {
+        RESPType::Array(vec![RESPType::BulkString(String::from("PING"))])
     }
 
     pub fn execute(self) -> String {

@@ -1,5 +1,6 @@
 use super::as_simple_string;
-use crate::parse::{RESPError, RESPResult, RESPType};
+use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::parse::RESPType;
 use crate::server::DB;
 
 #[derive(Debug, PartialEq)]
@@ -24,14 +25,12 @@ impl Set {
         }
     }
 
-    pub fn to_resp(self) -> String {
-        format!(
-            "*3\r\n$3\r\nSET\r\n${}\r\n{}\r\n${}\r\n{}\r\n",
-            self.key.len(),
-            self.key,
-            self.value.len(),
-            self.value
-        )
+    pub fn to_resp(self) -> RESPType {
+        RESPType::Array(vec![
+            RESPType::BulkString(String::from("SET")),
+            RESPType::BulkString(self.key),
+            RESPType::BulkString(self.value),
+        ])
     }
 
     pub fn execute(self, db: &DB) -> String {

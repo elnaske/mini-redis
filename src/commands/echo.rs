@@ -1,5 +1,6 @@
 use super::as_bulk_string;
-use crate::parse::{RESPError, RESPResult, RESPType};
+use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::parse::RESPType;
 
 #[derive(Debug, PartialEq)]
 pub struct Echo {
@@ -18,12 +19,11 @@ impl Echo {
         }
     }
 
-    pub fn to_resp(self) -> String {
-        format!(
-            "*2\r\n$4\r\nECHO\r\n${}\r\n{}\r\n",
-            self.msg.len(),
-            self.msg
-        )
+    pub fn to_resp(self) -> RESPType {
+        RESPType::Array(vec![
+            RESPType::BulkString(String::from("ECHO")),
+            RESPType::BulkString(self.msg),
+        ])
     }
 
     pub fn execute(self) -> String {

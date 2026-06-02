@@ -1,4 +1,5 @@
-use crate::parse::{RESPError, RESPResult, RESPType};
+use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::parse::RESPType;
 use crate::server::DB;
 
 mod ping;
@@ -22,7 +23,6 @@ pub enum Command {
 }
 impl Command {
     pub fn parse(request: Vec<RESPType>) -> RESPResult<Self> {
-        // println!("{request:?}");
         match request.first() {
             Some(RESPType::BulkString(s)) => match &s.to_uppercase()[..] {
                 "PING" => Ok(Self::Ping(Ping::new())),
@@ -37,12 +37,13 @@ impl Command {
     }
 
     pub fn to_resp(self) -> String {
-        match self {
+        let request = match self {
             Self::Ping(ping) => ping.to_resp(),
             Self::Echo(echo) => echo.to_resp(),
             Self::Set(set) => set.to_resp(),
             Self::Get(get) => get.to_resp(),
-        }
+        };
+        request.to_string()
     }
 
     pub fn execute(self, db: &DB) -> String {
