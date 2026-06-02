@@ -24,18 +24,61 @@ fn response_to_string(typ: RESPType) -> String {
     }
 }
 
+fn repl(addr: &str) {
+    let mut stream = TcpStream::connect(addr).unwrap();
+
+    let mut input = String::new();
+
+    loop {
+        print!("{}> ", addr);
+
+        std::io::stdout().flush().unwrap();
+
+        input.clear();
+        std::io::stdin().read_line(&mut input).unwrap();
+
+        let args = input.trim();
+
+        if args == "exit" {
+            break;
+        }
+
+        match parse_command(args.split_whitespace()) {
+            Ok(cmd) => {
+                stream.write_all(cmd.to_resp().as_bytes()).unwrap();
+                let mut buffer = [0; 512];
+                stream.read(&mut buffer).unwrap();
+
+                let response = parse_response(&buffer).unwrap();
+
+                println!("{}", response_to_string(response));
+            }
+            Err(e) => {
+                println!("Error: {e}");
+            }
+        }
+    }
+}
+
 fn main() {
-    let cmd = parse_command(env::args()).unwrap_or_else(|err| {
-        eprintln!("{err}");
-        process::exit(1);
-    });
+    let mut args = env::args();
+    if args.len() == 1 {
+        repl(ADDRESS);
+    } else {
+        args.next();
 
-    let mut stream = TcpStream::connect(ADDRESS).unwrap();
-    stream.write_all(cmd.to_resp().as_bytes()).unwrap();
-    let mut buffer = [0; 512];
-    stream.read(&mut buffer).unwrap();
+        let cmd = parse_command(args).unwrap_or_else(|err| {
+            eprintln!("{err}");
+            process::exit(1);
+        });
 
-    let response = parse_response(&buffer).unwrap();
+        let mut stream = TcpStream::connect(ADDRESS).unwrap();
+        stream.write_all(cmd.to_resp().as_bytes()).unwrap();
+        let mut buffer = [0; 512];
+        stream.read(&mut buffer).unwrap();
 
-    println!("{}", response_to_string(response));
+        let response = parse_response(&buffer).unwrap();
+
+        println!("{}", response_to_string(response));
+    }
 }
