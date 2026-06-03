@@ -1,5 +1,6 @@
 use super::as_bulk_string;
-use crate::parse::{RESPError, RESPResult, RESPType};
+use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::parse::RESPType;
 use crate::server::DB;
 
 #[derive(Debug, PartialEq)]
@@ -13,13 +14,20 @@ impl Get {
 
     pub fn parse(request: &[RESPType]) -> RESPResult<Self> {
         match request.get(1) {
-            Some(RESPType::BulkString(s)) => Ok(Get::new(s.to_string())),
+            Some(RESPType::BulkString(s)) => Ok(Get::new(s.to_owned())),
             Some(_) => Err(RESPError::CommandError),
             None => Err(RESPError::MissingArgs),
         }
     }
 
-    pub fn execute(&self, db: &DB) -> String {
+    pub fn to_resp(self) -> RESPType {
+        RESPType::Array(vec![
+            RESPType::BulkString(String::from("GET")),
+            RESPType::BulkString(self.key),
+        ])
+    }
+
+    pub fn execute(self, db: &DB) -> String {
         let db = db.lock().unwrap();
         match db.get(&self.key) {
             Some(value) => as_bulk_string(value),

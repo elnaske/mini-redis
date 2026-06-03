@@ -4,7 +4,7 @@ use tokio::net::{TcpListener, TcpStream};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::parse::parse_input;
+use crate::resp::parse::parse_request;
 
 const BUF_SIZE: usize = 512;
 
@@ -15,7 +15,7 @@ pub struct Server {
     db: DB,
 }
 impl Server {
-    pub async fn init(address: &str) -> std::io::Result<Self> {
+    pub async fn new(address: &str) -> std::io::Result<Self> {
         Ok(Server {
             listener: TcpListener::bind(address).await?,
             db: Arc::new(Mutex::new(HashMap::<String, String>::new())),
@@ -46,7 +46,7 @@ async fn handle_connection(mut stream: TcpStream, db: DB) {
             Ok(size) if size > 0 => {
                 // println!("Received: {:?}", buffer);
 
-                let cmd = parse_input(&buffer);
+                let cmd = parse_request(&buffer);
 
                 let response = match cmd {
                     Ok(cmd) => cmd.execute(&db),

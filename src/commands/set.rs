@@ -1,5 +1,6 @@
 use super::as_simple_string;
-use crate::parse::{RESPError, RESPResult, RESPType};
+use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::parse::RESPType;
 use crate::server::DB;
 
 #[derive(Debug, PartialEq)]
@@ -18,10 +19,18 @@ impl Set {
         } else if let RESPType::BulkString(k) = &request[1]
             && let RESPType::BulkString(v) = &request[2]
         {
-            Ok(Set::new(k.to_string(), v.to_string()))
+            Ok(Set::new(k.to_owned(), v.to_owned()))
         } else {
             Err(RESPError::CommandError)
         }
+    }
+
+    pub fn to_resp(self) -> RESPType {
+        RESPType::Array(vec![
+            RESPType::BulkString(String::from("SET")),
+            RESPType::BulkString(self.key),
+            RESPType::BulkString(self.value),
+        ])
     }
 
     pub fn execute(self, db: &DB) -> String {
