@@ -27,6 +27,4 @@ async fn main() {
     });
 
     manager.await.unwrap();
-    t1.await.unwrap();
-    t2.await.unwrap();
 }

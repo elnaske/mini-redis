@@ -1,6 +1,7 @@
-use std::io::prelude::*;
 use std::io::{self, Write};
-use std::net::TcpStream;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -35,7 +36,7 @@ impl Client {
     pub async fn connect(address: &str) -> std::io::Result<Self> {
         Ok(Client {
             address: address.to_owned(),
-            stream: TcpStream::connect(address)?,
+            stream: TcpStream::connect(address).await?,
         })
     }
 
@@ -77,13 +78,13 @@ impl Client {
     }
 
     pub async fn send_request(&mut self, cmd: Command) -> std::io::Result<()> {
-        self.stream.write_all(cmd.to_resp().as_bytes())?;
+        self.stream.write_all(cmd.to_resp().as_bytes()).await?;
         Ok(())
     }
 
     pub async fn get_response(&mut self) -> String {
         let mut buffer = [0; 512];
-        self.stream.read(&mut buffer).unwrap();
+        self.stream.read(&mut buffer).await.unwrap();
 
         let response = parse_response(&buffer).unwrap();
         response_to_string(response)

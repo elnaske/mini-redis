@@ -1,5 +1,6 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Semaphore;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -12,22 +13,36 @@ pub type DB = Arc<Mutex<HashMap<String, String>>>;
 
 pub struct Server {
     listener: TcpListener,
+    limit_connections: Arc<Semaphore>,
     db: DB,
 }
 impl Server {
-    pub async fn new(address: &str) -> std::io::Result<Self> {
+    pub async fn new(address: &str, max_connections: usize) -> std::io::Result<Self> {
         Ok(Server {
             listener: TcpListener::bind(address).await?,
+            limit_connections: Arc::new(Semaphore::new(max_connections)),
             db: Arc::new(Mutex::new(HashMap::<String, String>::new())),
         })
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
         loop {
+            let permit = self
+                .limit_connections
+                .clone()
+                .acquire_owned()
+                .await
+                .unwrap();
+
+            let db = self.db.clone();
+
             match self.listener.accept().await {
                 Ok((stream, _)) => {
                     println!("Connection accepted");
-                    tokio::spawn(handle_connection(stream, self.db.clone()));
+                    tokio::spawn(async move {
+                        handle_connection(stream, db).await;
+                        drop(permit);
+                    });
                 }
                 Err(e) => {
                     println!("Error: {}", e);
