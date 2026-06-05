@@ -1,19 +1,19 @@
 use std::{env, process};
 
+use mini_redis::DEFAULT_ADDRESS;
 use mini_redis::client::Client;
 
-const ADDRESS: &str = "127.0.0.1:6379";
-
-fn main() {
-    let mut client = Client::new(ADDRESS).unwrap();
+#[tokio::main]
+async fn main() {
+    let mut client = Client::connect(DEFAULT_ADDRESS).await.unwrap();
     let mut args = env::args();
 
     if args.len() == 1 {
-        client.repl();
+        client.repl().await;
     } else {
         args.next();
 
-        match client.process_command(args) {
+        match client.process_command(args).await {
             Ok(response) => println!("{}", response),
             Err(e) => {
                 eprintln!("{e}");

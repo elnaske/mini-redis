@@ -2,22 +2,44 @@ use std::io::prelude::*;
 use std::io::{self, Write};
 use std::net::TcpStream;
 
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
+use tokio::sync::oneshot::error::RecvError;
+
 use crate::commands::{Command, Echo, Get, Ping, Set};
 use crate::resp::parse::{RESPType, parse_response};
+
+pub struct Message {
+    cmd: Command,
+    responder: oneshot::Sender<String>,
+}
+impl Message {
+    pub fn new(cmd: Command, responder: oneshot::Sender<String>) -> Self {
+        Message { cmd, responder }
+    }
+}
+
+pub async fn request_client(cmd: Command, tx: mpsc::Sender<Message>) -> Result<String, RecvError> {
+    let (tx_resp, rx_resp) = oneshot::channel();
+
+    tx.send(Message::new(cmd, tx_resp)).await.unwrap();
+
+    rx_resp.await
+}
 
 pub struct Client {
     address: String,
     stream: TcpStream,
 }
 impl Client {
-    pub fn new(address: &str) -> std::io::Result<Self> {
+    pub async fn connect(address: &str) -> std::io::Result<Self> {
         Ok(Client {
             address: address.to_owned(),
             stream: TcpStream::connect(address)?,
         })
     }
 
-    pub fn repl(&mut self) {
+    pub async fn repl(&mut self) {
         let mut input = String::new();
 
         loop {
@@ -34,33 +56,46 @@ impl Client {
                 break;
             }
 
-            match self.process_command(args.split_whitespace()) {
+            match self.process_command(args.split_whitespace()).await {
                 Ok(response) => println!("{}", response),
                 Err(e) => println!("Error: {e}"),
             }
         }
     }
 
-    pub fn process_command<S>(&mut self, args: impl Iterator<Item = S>) -> Result<String, String>
+    pub async fn process_command<S>(
+        &mut self,
+        args: impl Iterator<Item = S>,
+    ) -> Result<String, String>
     where
         S: AsRef<str>,
     {
         let cmd = parse_command(args)?;
-        self.send_request(cmd);
-        let response = self.get_response();
+        self.send_request(cmd).await.map_err(|e| e.to_string())?;
+        let response = self.get_response().await;
         Ok(response)
     }
 
-    fn send_request(&mut self, cmd: Command) {
-        self.stream.write_all(cmd.to_resp().as_bytes()).unwrap();
+    pub async fn send_request(&mut self, cmd: Command) -> std::io::Result<()> {
+        self.stream.write_all(cmd.to_resp().as_bytes())?;
+        Ok(())
     }
 
-    fn get_response(&mut self) -> String {
+    pub async fn get_response(&mut self) -> String {
         let mut buffer = [0; 512];
         self.stream.read(&mut buffer).unwrap();
 
         let response = parse_response(&buffer).unwrap();
         response_to_string(response)
+    }
+
+    pub async fn manage_requests(&mut self, mut rx: mpsc::Receiver<Message>) {
+        while let Some(msg) = rx.recv().await {
+            self.send_request(msg.cmd).await.unwrap();
+            let response = self.get_response().await;
+
+            msg.responder.send(response).unwrap();
+        }
     }
 }
 
