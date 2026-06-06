@@ -1,6 +1,6 @@
 use crate::resp::errors::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
-use crate::server::DB;
+use crate::storage::DB;
 
 mod ping;
 pub use ping::Ping;
@@ -95,8 +95,20 @@ mod test {
         .unwrap();
         assert_eq!(
             cmd,
-            Command::Set(Set::new(String::from("hello"), String::from("world")))
+            Command::Set(Set::new(String::from("hello"), String::from("world"), None))
         );
+    }
+
+    #[test]
+    fn command_set_w_expiry() {
+        let _cmd = Command::parse(vec![
+            RESPType::BulkString(String::from("SET")),
+            RESPType::BulkString(String::from("hello")),
+            RESPType::BulkString(String::from("world")),
+            RESPType::BulkString(String::from("EX")),
+            RESPType::BulkString(String::from("5")),
+        ])
+        .unwrap();
     }
 
     #[test]

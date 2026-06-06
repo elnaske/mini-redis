@@ -1,7 +1,7 @@
 use super::as_bulk_string;
 use crate::resp::errors::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
-use crate::server::DB;
+use crate::storage::DB;
 
 #[derive(Debug, PartialEq)]
 pub struct Get {
@@ -27,9 +27,9 @@ impl Get {
         ])
     }
 
-    pub fn execute(self, db: &DB) -> String {
-        let db = db.lock().unwrap();
-        match db.get(&self.key) {
+    pub fn execute(self, storage: &DB) -> String {
+        let storage = storage.lock().unwrap();
+        match storage.db.get(&self.key) {
             Some(value) => as_bulk_string(value),
             None => format!("+Error: Invalid Key `{}`\r\n", self.key),
         }

@@ -2,14 +2,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::resp::parse::parse_request;
+use crate::storage::{DB, Storage};
 
 const BUF_SIZE: usize = 512;
-
-pub type DB = Arc<Mutex<HashMap<String, String>>>;
 
 pub struct Server {
     listener: TcpListener,
@@ -21,7 +19,7 @@ impl Server {
         Ok(Server {
             listener: TcpListener::bind(address).await?,
             limit_connections: Arc::new(Semaphore::new(max_connections)),
-            db: Arc::new(Mutex::new(HashMap::<String, String>::new())),
+            db: Arc::new(Mutex::new(Storage::new())),
         })
     }
 

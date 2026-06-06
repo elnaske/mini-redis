@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -121,9 +122,33 @@ where
                     return Err(String::from("Usage: client set <key> <value>"));
                 };
 
+                let expire = match args.next() {
+                    Some(arg) => match &arg.as_ref().to_lowercase()[..] {
+                        "ex" | "px" => match args.next() {
+                            Some(t) => {
+                                let t = {
+                                    let t = t.as_ref().parse::<u64>().map_err(|e| e.to_string())?;
+                                    if arg.as_ref() == "ex" {
+                                        Duration::from_secs(t)
+                                    } else {
+                                        Duration::from_millis(t)
+                                    }
+                                };
+                                Some(t)
+                            }
+                            None => {
+                                return Err(format!("Expected argument after {}", arg.as_ref()));
+                            }
+                        },
+                        _ => return Err(format!("Unknown argument: {}", arg.as_ref())),
+                    },
+                    None => None,
+                };
+
                 Ok(Command::Set(Set::new(
                     key.as_ref().to_owned(),
                     value.as_ref().to_owned(),
+                    expire,
                 )))
             }
             "get" => {
