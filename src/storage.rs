@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use crate::resp::RESPType;
-
-pub type DB = Arc<Mutex<Storage>>;
 
 pub struct Storage {
     pub db: HashMap<String, String>,
@@ -30,6 +27,8 @@ impl Storage {
         for k in expired {
             self.db.remove(&k);
             self.expiry.remove(&k);
+
+            println!("Removed expired key `{}`", k)
         }
     }
 }

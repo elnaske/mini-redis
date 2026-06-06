@@ -1,7 +1,9 @@
+use std::sync::{Arc, Mutex};
+
 use super::as_bulk_string;
 use crate::resp::errors::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
-use crate::storage::DB;
+use crate::storage::Storage;
 
 #[derive(Debug, PartialEq)]
 pub struct Get {
@@ -27,7 +29,7 @@ impl Get {
         ])
     }
 
-    pub fn execute(self, storage: &DB) -> String {
+    pub fn execute(self, storage: &Arc<Mutex<Storage>>) -> String {
         let storage = storage.lock().unwrap();
         match storage.db.get(&self.key) {
             Some(value) => as_bulk_string(value),

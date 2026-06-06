@@ -1,6 +1,8 @@
+use std::sync::{Arc, Mutex};
+
 use crate::resp::errors::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
-use crate::storage::DB;
+use crate::storage::Storage;
 
 mod ping;
 pub use ping::Ping;
@@ -46,7 +48,7 @@ impl Command {
         request.to_string()
     }
 
-    pub fn execute(self, db: &DB) -> String {
+    pub fn execute(self, db: &Arc<Mutex<Storage>>) -> String {
         match self {
             Self::Ping(ping) => ping.execute(),
             Self::Echo(echo) => echo.execute(),

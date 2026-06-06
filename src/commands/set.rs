@@ -1,9 +1,10 @@
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use super::as_simple_string;
 use crate::resp::errors::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
-use crate::storage::{DB, KeyExpiry};
+use crate::storage::{KeyExpiry, Storage};
 
 #[derive(Debug, PartialEq)]
 pub struct Set {
@@ -66,7 +67,7 @@ impl Set {
         RESPType::Array(arr)
     }
 
-    pub fn execute(self, storage: &DB) -> String {
+    pub fn execute(self, storage: &Arc<Mutex<Storage>>) -> String {
         let mut storage = storage.lock().unwrap();
 
         if let Some(expire) = self.expire {
