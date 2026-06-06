@@ -68,6 +68,7 @@ fn as_simple_string(s: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::storage::KeyExpiry;
 
     #[test]
     fn command_ping() {
@@ -101,7 +102,7 @@ mod test {
 
     #[test]
     fn command_set_w_expiry() {
-        let _cmd = Command::parse(vec![
+        let cmd = Command::parse(vec![
             RESPType::BulkString(String::from("SET")),
             RESPType::BulkString(String::from("hello")),
             RESPType::BulkString(String::from("world")),
@@ -109,6 +110,31 @@ mod test {
             RESPType::BulkString(String::from("5")),
         ])
         .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Set(Set::new(
+                String::from("hello"),
+                String::from("world"),
+                Some(KeyExpiry::EX(5))
+            ))
+        );
+
+        let cmd = Command::parse(vec![
+            RESPType::BulkString(String::from("SET")),
+            RESPType::BulkString(String::from("hello")),
+            RESPType::BulkString(String::from("world")),
+            RESPType::BulkString(String::from("PX")),
+            RESPType::BulkString(String::from("5")),
+        ])
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Set(Set::new(
+                String::from("hello"),
+                String::from("world"),
+                Some(KeyExpiry::PX(5))
+            ))
+        );
     }
 
     #[test]

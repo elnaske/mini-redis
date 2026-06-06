@@ -1,5 +1,4 @@
 use std::io::{self, Write};
-use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -10,6 +9,7 @@ use tokio::sync::oneshot::error::RecvError;
 
 use crate::commands::{Command, Echo, Get, Ping, Set};
 use crate::resp::parse::{RESPType, parse_response};
+use crate::storage::KeyExpiry;
 
 pub struct Message {
     cmd: Command,
@@ -124,17 +124,27 @@ where
 
                 let expire = match args.next() {
                     Some(arg) => match &arg.as_ref().to_lowercase()[..] {
-                        "ex" | "px" => match args.next() {
+                        "ex" => match args.next() {
                             Some(t) => {
-                                let t = {
-                                    let t = t.as_ref().parse::<u64>().map_err(|e| e.to_string())?;
-                                    if arg.as_ref() == "ex" {
-                                        Duration::from_secs(t)
-                                    } else {
-                                        Duration::from_millis(t)
-                                    }
-                                };
-                                Some(t)
+                                let t = t
+                                    .as_ref()
+                                    .parse::<u64>()
+                                    .map_err(|e| e.to_string())
+                                    .unwrap();
+                                Some(KeyExpiry::EX(t))
+                            }
+                            None => {
+                                return Err(format!("Expected argument after {}", arg.as_ref()));
+                            }
+                        },
+                        "px" => match args.next() {
+                            Some(t) => {
+                                let t = t
+                                    .as_ref()
+                                    .parse::<u64>()
+                                    .map_err(|e| e.to_string())
+                                    .unwrap();
+                                Some(KeyExpiry::PX(t))
                             }
                             None => {
                                 return Err(format!("Expected argument after {}", arg.as_ref()));

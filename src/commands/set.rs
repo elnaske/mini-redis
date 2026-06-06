@@ -1,18 +1,18 @@
-use std::time::Duration;
+use std::time::SystemTime;
 
 use super::as_simple_string;
 use crate::resp::errors::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
-use crate::storage::DB;
+use crate::storage::{DB, KeyExpiry};
 
 #[derive(Debug, PartialEq)]
 pub struct Set {
     key: String,
     value: String,
-    expire: Option<Duration>,
+    expire: Option<KeyExpiry>,
 }
 impl Set {
-    pub fn new(key: String, value: String, expire: Option<Duration>) -> Self {
+    pub fn new(key: String, value: String, expire: Option<KeyExpiry>) -> Self {
         Set { key, value, expire }
     }
 
@@ -27,27 +27,25 @@ impl Set {
         };
 
         let expire = match args.next() {
-            Some(RESPType::BulkString(arg)) => {
-                match &arg.to_lowercase()[..] {
-                    // expiration time
-                    "ex" | "px" => match args.next() {
-                        Some(RESPType::BulkString(t)) => {
-                            let t = {
-                                let t = t.parse::<u64>().map_err(|e| e.to_string()).unwrap();
-                                if arg == "ex" {
-                                    Duration::from_secs(t)
-                                } else {
-                                    Duration::from_millis(t)
-                                }
-                            };
-                            Ok(Some(t))
-                        }
-                        Some(_) => Err(RESPError::CommandError),
-                        None => Err(RESPError::MissingArgs),
-                    },
-                    _ => Err(RESPError::CommandError),
-                }
-            }
+            Some(RESPType::BulkString(arg)) => match &arg.to_lowercase()[..] {
+                "ex" => match args.next() {
+                    Some(RESPType::BulkString(t)) => {
+                        let t = t.parse::<u64>().map_err(|e| e.to_string()).unwrap();
+                        Ok(Some(KeyExpiry::EX(t)))
+                    }
+                    Some(_) => Err(RESPError::CommandError),
+                    None => Err(RESPError::MissingArgs),
+                },
+                "px" => match args.next() {
+                    Some(RESPType::BulkString(t)) => {
+                        let t = t.parse::<u64>().map_err(|e| e.to_string()).unwrap();
+                        Ok(Some(KeyExpiry::PX(t)))
+                    }
+                    Some(_) => Err(RESPError::CommandError),
+                    None => Err(RESPError::MissingArgs),
+                },
+                _ => Err(RESPError::CommandError),
+            },
             Some(_) => Err(RESPError::CommandError),
             None => Ok(None),
         }?;
@@ -56,16 +54,28 @@ impl Set {
     }
 
     pub fn to_resp(self) -> RESPType {
-        RESPType::Array(vec![
+        let mut arr = vec![
             RESPType::BulkString(String::from("SET")),
             RESPType::BulkString(self.key),
             RESPType::BulkString(self.value),
-        ])
+        ];
+        if let Some(expire) = self.expire {
+            arr.extend(expire.to_resp());
+        }
+
+        RESPType::Array(arr)
     }
 
     pub fn execute(self, storage: &DB) -> String {
         let mut storage = storage.lock().unwrap();
+
+        if let Some(expire) = self.expire {
+            let expiry_time = SystemTime::now() + expire.to_duration();
+            storage.expiry.insert(self.key.clone(), expiry_time);
+        }
+
         storage.db.insert(self.key, self.value);
+
         as_simple_string("OK")
     }
 }
