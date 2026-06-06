@@ -85,7 +85,7 @@ impl Client {
 
     pub async fn get_response(&mut self) -> String {
         let mut buffer = [0; 512];
-        self.stream.read(&mut buffer).await.unwrap();
+        self.stream.read(&mut buffer).await.unwrap(); // TODO: check size of read
 
         let response = parse_response(&buffer).unwrap();
         response_to_string(response)
