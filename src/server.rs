@@ -87,13 +87,12 @@ impl Server {
         })
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self, shutdown_signal: impl Future) {
         let (shutdown_tx, _) = broadcast::channel(1);
         let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel(1);
 
         let mut check_expiration = tokio::time::interval(Duration::from_millis(10));
-        let shutdown = tokio::signal::ctrl_c();
-        tokio::pin!(shutdown);
+        tokio::pin!(shutdown_signal);
 
         loop {
             tokio::select! {
@@ -129,7 +128,7 @@ impl Server {
                 _ = check_expiration.tick() => {
                     expire_keys(self.storage.clone()).await;
                 }
-                _ = &mut shutdown => {
+                _ = &mut shutdown_signal => {
                     println!("Shutting down");
                     break;
                 }
