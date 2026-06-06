@@ -1,6 +1,7 @@
-use std::io::prelude::*;
 use std::io::{self, Write};
-use std::net::TcpStream;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -8,6 +9,7 @@ use tokio::sync::oneshot::error::RecvError;
 
 use crate::commands::{Command, Echo, Get, Ping, Set};
 use crate::resp::parse::{RESPType, parse_response};
+use crate::storage::KeyExpiry;
 
 pub struct Message {
     cmd: Command,
@@ -35,7 +37,7 @@ impl Client {
     pub async fn connect(address: &str) -> std::io::Result<Self> {
         Ok(Client {
             address: address.to_owned(),
-            stream: TcpStream::connect(address)?,
+            stream: TcpStream::connect(address).await?,
         })
     }
 
@@ -77,13 +79,13 @@ impl Client {
     }
 
     pub async fn send_request(&mut self, cmd: Command) -> std::io::Result<()> {
-        self.stream.write_all(cmd.to_resp().as_bytes())?;
+        self.stream.write_all(cmd.to_resp().as_bytes()).await?;
         Ok(())
     }
 
     pub async fn get_response(&mut self) -> String {
         let mut buffer = [0; 512];
-        self.stream.read(&mut buffer).unwrap();
+        self.stream.read(&mut buffer).await.unwrap(); // TODO: check size of read
 
         let response = parse_response(&buffer).unwrap();
         response_to_string(response)
@@ -120,9 +122,43 @@ where
                     return Err(String::from("Usage: client set <key> <value>"));
                 };
 
+                let expire = match args.next() {
+                    Some(arg) => match &arg.as_ref().to_lowercase()[..] {
+                        "ex" => match args.next() {
+                            Some(t) => {
+                                let t = t
+                                    .as_ref()
+                                    .parse::<u64>()
+                                    .map_err(|e| e.to_string())
+                                    .unwrap();
+                                Some(KeyExpiry::EX(t))
+                            }
+                            None => {
+                                return Err(format!("Expected argument after {}", arg.as_ref()));
+                            }
+                        },
+                        "px" => match args.next() {
+                            Some(t) => {
+                                let t = t
+                                    .as_ref()
+                                    .parse::<u64>()
+                                    .map_err(|e| e.to_string())
+                                    .unwrap();
+                                Some(KeyExpiry::PX(t))
+                            }
+                            None => {
+                                return Err(format!("Expected argument after {}", arg.as_ref()));
+                            }
+                        },
+                        _ => return Err(format!("Unknown argument: {}", arg.as_ref())),
+                    },
+                    None => None,
+                };
+
                 Ok(Command::Set(Set::new(
                     key.as_ref().to_owned(),
                     value.as_ref().to_owned(),
+                    expire,
                 )))
             }
             "get" => {

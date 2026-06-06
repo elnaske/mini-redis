@@ -1,6 +1,8 @@
+use std::sync::{Arc, Mutex};
+
 use crate::resp::errors::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
-use crate::server::DB;
+use crate::storage::Storage;
 
 mod ping;
 pub use ping::Ping;
@@ -46,7 +48,7 @@ impl Command {
         request.to_string()
     }
 
-    pub fn execute(self, db: &DB) -> String {
+    pub fn execute(self, db: &Arc<Mutex<Storage>>) -> String {
         match self {
             Self::Ping(ping) => ping.execute(),
             Self::Echo(echo) => echo.execute(),
@@ -68,6 +70,7 @@ fn as_simple_string(s: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::storage::KeyExpiry;
 
     #[test]
     fn command_ping() {
@@ -95,7 +98,44 @@ mod test {
         .unwrap();
         assert_eq!(
             cmd,
-            Command::Set(Set::new(String::from("hello"), String::from("world")))
+            Command::Set(Set::new(String::from("hello"), String::from("world"), None))
+        );
+    }
+
+    #[test]
+    fn command_set_w_expiry() {
+        let cmd = Command::parse(vec![
+            RESPType::BulkString(String::from("SET")),
+            RESPType::BulkString(String::from("hello")),
+            RESPType::BulkString(String::from("world")),
+            RESPType::BulkString(String::from("EX")),
+            RESPType::BulkString(String::from("5")),
+        ])
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Set(Set::new(
+                String::from("hello"),
+                String::from("world"),
+                Some(KeyExpiry::EX(5))
+            ))
+        );
+
+        let cmd = Command::parse(vec![
+            RESPType::BulkString(String::from("SET")),
+            RESPType::BulkString(String::from("hello")),
+            RESPType::BulkString(String::from("world")),
+            RESPType::BulkString(String::from("PX")),
+            RESPType::BulkString(String::from("5")),
+        ])
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Set(Set::new(
+                String::from("hello"),
+                String::from("world"),
+                Some(KeyExpiry::PX(5))
+            ))
         );
     }
 

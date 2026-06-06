@@ -14,19 +14,17 @@ async fn main() {
         client.manage_requests(rx).await;
     });
 
-    let t1 = tokio::spawn(async move {
+    tokio::spawn(async move {
         let cmd = Command::Ping(Ping::new());
         let res = request_client(cmd, tx).await;
         println!("T1: {:?}", res);
     });
 
-    let t2 = tokio::spawn(async move {
+    tokio::spawn(async move {
         let cmd = Command::Echo(Echo::new(String::from("hello")));
         let res = request_client(cmd, tx2).await;
         println!("T2: {:?}", res);
     });
 
     manager.await.unwrap();
-    t1.await.unwrap();
-    t2.await.unwrap();
 }
