@@ -1,6 +1,7 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
+use tokio::time;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -9,6 +10,41 @@ use crate::resp::parse::parse_request;
 use crate::storage::Storage;
 
 const BUF_SIZE: usize = 512;
+
+struct ConnectionHandler {
+    stream: TcpStream,
+    db: Arc<Mutex<Storage>>,
+}
+impl ConnectionHandler {
+    pub async fn run(&mut self) {
+        let mut buffer = [0; BUF_SIZE];
+
+        loop {
+            match self.stream.read(&mut buffer).await {
+                Ok(size) if size > 0 => {
+                    let cmd = parse_request(&buffer);
+
+                    let response = match cmd {
+                        Ok(cmd) => cmd.execute(&self.db),
+                        Err(e) => format!("+{}\r\n", e),
+                    };
+
+                    if let Err(e) = self.stream.write_all(response.as_bytes()).await {
+                        println!("Error writing to socket: {e}");
+                    }
+                }
+                Ok(_) => {
+                    println!("Connection closed");
+                    break;
+                }
+                Err(e) => {
+                    println!("Error: {e}");
+                    break;
+                }
+            }
+        }
+    }
+}
 
 pub struct Server {
     listener: TcpListener,
@@ -24,7 +60,7 @@ impl Server {
         })
     }
 
-    pub async fn run(&self) -> std::io::Result<()> {
+    pub async fn run(&mut self) -> std::io::Result<()> {
         loop {
             let permit = self
                 .limit_connections
@@ -33,17 +69,20 @@ impl Server {
                 .await
                 .unwrap();
 
-            let storage = self.storage.clone();
-
             let mut check_expiration = tokio::time::interval(Duration::from_millis(10));
 
             tokio::select! {
-                connection = self.listener.accept() => {
-                    match connection {
-                    Ok((stream, _)) => {
+                stream = self.accept_connection() => {
+                    match stream {
+                    Ok(stream) => {
                         println!("Connection accepted");
+
+                        let mut handler = ConnectionHandler {
+                            stream, db: self.storage.clone()
+                        };
+
                         tokio::spawn(async move {
-                            handle_connection(stream, storage).await;
+                            handler.run().await;
                             drop(permit);
                         });
                     }
@@ -61,40 +100,28 @@ impl Server {
             }
         }
     }
+
+    async fn accept_connection(&mut self) -> std::io::Result<TcpStream> {
+        let mut backoff = 1;
+
+        loop {
+            match self.listener.accept().await {
+                Ok((stream, _)) => return Ok(stream),
+                Err(err) => {
+                    if backoff > 64 {
+                        return Err(err.into());
+                    }
+                }
+            }
+
+            time::sleep(Duration::from_secs(backoff)).await;
+
+            backoff *= 2;
+        }
+    }
 }
 
 async fn expire_keys(storage: Arc<Mutex<Storage>>) {
     let mut storage = storage.lock().unwrap();
     storage.expire_keys();
-}
-
-async fn handle_connection(mut stream: TcpStream, db: Arc<Mutex<Storage>>) {
-    let mut buffer = [0; BUF_SIZE];
-
-    loop {
-        match stream.read(&mut buffer).await {
-            Ok(size) if size > 0 => {
-                // println!("Received: {:?}", buffer);
-
-                let cmd = parse_request(&buffer);
-
-                let response = match cmd {
-                    Ok(cmd) => cmd.execute(&db),
-                    Err(e) => format!("+{}\r\n", e),
-                };
-
-                if let Err(e) = stream.write_all(response.as_bytes()).await {
-                    println!("Error writing to socket: {e}");
-                }
-            }
-            Ok(_) => {
-                println!("Connection closed");
-                break;
-            }
-            Err(e) => {
-                println!("Error: {e}");
-                break;
-            }
-        }
-    }
 }
