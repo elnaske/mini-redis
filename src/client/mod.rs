@@ -2,14 +2,16 @@ use std::io::{self, Write};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::sync::oneshot::error::RecvError;
 
 use crate::commands::{Command, Echo, Get, Ping, Set};
+use crate::resp::error::RESPError;
 use crate::resp::parse::{RESPType, parse_response};
 use crate::storage::KeyExpiry;
+
+pub mod error;
+use error::{ClientError, ClientResult};
 
 pub struct Message {
     cmd: Command,
@@ -21,12 +23,14 @@ impl Message {
     }
 }
 
-pub async fn request_client(cmd: Command, tx: mpsc::Sender<Message>) -> Result<String, RecvError> {
+pub async fn request_client(cmd: Command, tx: mpsc::Sender<Message>) -> ClientResult<String> {
     let (tx_resp, rx_resp) = oneshot::channel();
 
-    tx.send(Message::new(cmd, tx_resp)).await.unwrap();
+    tx.send(Message::new(cmd, tx_resp))
+        .await
+        .map_err(ClientError::Send)?;
 
-    rx_resp.await
+    rx_resp.await.map_err(ClientError::Recv)
 }
 
 pub struct Client {
@@ -68,40 +72,48 @@ impl Client {
     pub async fn process_command<S>(
         &mut self,
         args: impl Iterator<Item = S>,
-    ) -> Result<String, String>
+    ) -> ClientResult<String>
     where
         S: AsRef<str>,
     {
         let cmd = parse_command(args)?;
-        self.send_request(cmd).await.map_err(|e| e.to_string())?;
-        let response = self.get_response().await;
+        self.send_request(cmd).await?;
+        let response = self.get_response().await?;
         Ok(response)
     }
 
-    pub async fn send_request(&mut self, cmd: Command) -> std::io::Result<()> {
-        self.stream.write_all(cmd.to_resp().as_bytes()).await?;
+    pub async fn send_request(&mut self, cmd: Command) -> ClientResult<()> {
+        self.stream
+            .write_all(cmd.to_resp().as_bytes())
+            .await
+            .map_err(ClientError::Io)?;
         Ok(())
     }
 
-    pub async fn get_response(&mut self) -> String {
+    pub async fn get_response(&mut self) -> ClientResult<String> {
         let mut buffer = [0; 512];
-        self.stream.read(&mut buffer).await.unwrap(); // TODO: check size of read
-
-        let response = parse_response(&buffer).unwrap();
-        response_to_string(response)
+        match self.stream.read(&mut buffer).await {
+            Ok(size) if size > 0 => {
+                let response = parse_response(&buffer).map_err(ClientError::Parse)?;
+                Ok(response_to_string(response))
+            }
+            Ok(_) => Err(ClientError::ConnectionClosed),
+            Err(e) => Err(ClientError::Io(e)),
+        }
     }
 
-    pub async fn manage_requests(&mut self, mut rx: mpsc::Receiver<Message>) {
+    pub async fn manage_requests(&mut self, mut rx: mpsc::Receiver<Message>) -> ClientResult<()> {
         while let Some(msg) = rx.recv().await {
-            self.send_request(msg.cmd).await.unwrap();
-            let response = self.get_response().await;
+            self.send_request(msg.cmd).await?;
+            let response = self.get_response().await?;
 
-            msg.responder.send(response).unwrap();
+            let _ = msg.responder.send(response);
         }
+        Ok(())
     }
 }
 
-pub fn parse_command<S>(mut args: impl Iterator<Item = S>) -> Result<Command, String>
+pub fn parse_command<S>(mut args: impl Iterator<Item = S>) -> ClientResult<Command>
 where
     S: AsRef<str>,
 {
@@ -110,16 +122,16 @@ where
             "ping" => Ok(Command::Ping(Ping::new())),
             "echo" => {
                 let Some(msg) = args.next() else {
-                    return Err(String::from("Usage: client echo <message>"));
+                    return Err(ClientError::MissingArgs);
                 };
                 Ok(Command::Echo(Echo::new(msg.as_ref().to_owned())))
             }
             "set" => {
                 let Some(key) = args.next() else {
-                    return Err(String::from("Usage: client set <key> <value>"));
+                    return Err(ClientError::MissingArgs);
                 };
                 let Some(value) = args.next() else {
-                    return Err(String::from("Usage: client set <key> <value>"));
+                    return Err(ClientError::MissingArgs);
                 };
 
                 let expire = match args.next() {
@@ -129,12 +141,12 @@ where
                                 let t = t
                                     .as_ref()
                                     .parse::<u64>()
-                                    .map_err(|e| e.to_string())
+                                    .map_err(|_| RESPError::ParseInt(t.as_ref().to_string()))
                                     .unwrap();
                                 Some(KeyExpiry::EX(t))
                             }
                             None => {
-                                return Err(format!("Expected argument after {}", arg.as_ref()));
+                                return Err(ClientError::MissingArgs);
                             }
                         },
                         "px" => match args.next() {
@@ -142,15 +154,15 @@ where
                                 let t = t
                                     .as_ref()
                                     .parse::<u64>()
-                                    .map_err(|e| e.to_string())
+                                    .map_err(|_| RESPError::ParseInt(t.as_ref().to_string()))
                                     .unwrap();
                                 Some(KeyExpiry::PX(t))
                             }
                             None => {
-                                return Err(format!("Expected argument after {}", arg.as_ref()));
+                                return Err(ClientError::MissingArgs);
                             }
                         },
-                        _ => return Err(format!("Unknown argument: {}", arg.as_ref())),
+                        other => return Err(ClientError::UnknownArg(other.to_owned())),
                     },
                     None => None,
                 };
@@ -163,14 +175,14 @@ where
             }
             "get" => {
                 let Some(key) = args.next() else {
-                    return Err(String::from("Usage: client get <key>"));
+                    return Err(ClientError::MissingArgs);
                 };
 
                 Ok(Command::Get(Get::new(key.as_ref().to_owned())))
             }
-            other => Err(format!("Command `{}` not implemented", other)),
+            other => Err(ClientError::UnknownCmd(other.to_owned())),
         },
-        None => Err(String::from("Usage: client <command> <args>")),
+        None => Err(ClientError::MissingArgs),
     }
 }
 

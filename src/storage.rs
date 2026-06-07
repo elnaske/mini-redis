@@ -3,6 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::resp::RESPType;
 
+#[derive(Debug, Default)]
 pub struct Storage {
     pub db: HashMap<String, String>,
     pub expiry: HashMap<String, SystemTime>,

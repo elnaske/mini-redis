@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use super::as_simple_string;
-use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::error::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
 use crate::storage::{KeyExpiry, Storage};
 
@@ -31,7 +31,10 @@ impl Set {
             Some(RESPType::BulkString(arg)) => match &arg.to_lowercase()[..] {
                 "ex" => match args.next() {
                     Some(RESPType::BulkString(t)) => {
-                        let t = t.parse::<u64>().map_err(|e| e.to_string()).unwrap();
+                        let t = t
+                            .parse::<u64>()
+                            .map_err(|_| RESPError::ParseInt(t.to_owned()))
+                            .unwrap();
                         Ok(Some(KeyExpiry::EX(t)))
                     }
                     Some(_) => Err(RESPError::CommandError),
@@ -39,7 +42,10 @@ impl Set {
                 },
                 "px" => match args.next() {
                     Some(RESPType::BulkString(t)) => {
-                        let t = t.parse::<u64>().map_err(|e| e.to_string()).unwrap();
+                        let t = t
+                            .parse::<u64>()
+                            .map_err(|_| RESPError::ParseInt(t.to_owned()))
+                            .unwrap();
                         Ok(Some(KeyExpiry::PX(t)))
                     }
                     Some(_) => Err(RESPError::CommandError),

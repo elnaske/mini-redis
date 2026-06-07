@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::commands::Command;
-use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::error::{RESPError, RESPResult};
 
 #[derive(Debug, PartialEq)]
 pub enum RESPType {
@@ -37,7 +37,7 @@ impl RESPType {
 
                 Ok(RESPType::Array(arr))
             }
-            Err(_) => Err(RESPError::ParseSize(size.to_string())),
+            Err(_) => Err(RESPError::ParseInt(size.to_string())),
         }
     }
 
@@ -64,7 +64,7 @@ impl RESPType {
                     Err(RESPError::InvalidSize(size))
                 }
             }
-            Err(_) => Err(RESPError::ParseSize(size.to_string())),
+            Err(_) => Err(RESPError::ParseInt(size.to_string())),
         }
     }
 
@@ -222,7 +222,7 @@ mod test {
         let mut idx = 0;
 
         match RESPType::parse(buffer, &mut idx) {
-            Err(RESPError::ParseSize(size)) => {
+            Err(RESPError::ParseInt(size)) => {
                 assert_eq!(size, "foo");
             }
             _ => panic!(),
@@ -264,7 +264,7 @@ mod test {
         let mut idx = 0;
 
         match RESPType::parse(buffer, &mut idx) {
-            Err(RESPError::ParseSize(size)) => {
+            Err(RESPError::ParseInt(size)) => {
                 assert_eq!(size, "-1");
             }
             _ => panic!(),
@@ -277,7 +277,7 @@ mod test {
         let mut idx = 0;
 
         match RESPType::parse(buffer, &mut idx) {
-            Err(RESPError::ParseSize(size)) => {
+            Err(RESPError::ParseInt(size)) => {
                 assert_eq!(size, "foo");
             }
             _ => panic!(),

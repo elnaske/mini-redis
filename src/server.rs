@@ -151,7 +151,7 @@ impl Server {
                 Ok((stream, _)) => return Ok(stream),
                 Err(err) => {
                     if backoff > 64 {
-                        return Err(err.into());
+                        return Err(err);
                     }
                 }
             }
