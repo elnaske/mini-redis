@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::error::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
 use crate::storage::Storage;
 

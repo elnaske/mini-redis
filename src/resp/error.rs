@@ -8,7 +8,7 @@ pub enum RESPError {
     InvalidPrefix(u8),
     InvalidCommand(String),
     InvalidSize(i32),
-    ParseSize(String),
+    ParseInt(String),
     MissingArgs,
     CommandError,
 }
@@ -19,7 +19,7 @@ impl fmt::Display for RESPError {
             Self::InvalidPrefix(c) => write!(f, "Invalid type prefix: {}", *c as char),
             Self::InvalidCommand(cmd) => write!(f, "Invalid command: {}", cmd),
             Self::InvalidSize(s) => write!(f, "Invalid length specifier: {}", s),
-            Self::ParseSize(s) => write!(f, "Couldn't parse `{}` to an integer", s),
+            Self::ParseInt(s) => write!(f, "Couldn't parse `{}` to an integer", s),
             Self::MissingArgs => write!(f, "Not enough arguments"),
             Self::CommandError => write!(f, "Command error"),
         }

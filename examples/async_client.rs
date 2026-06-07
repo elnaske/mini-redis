@@ -11,7 +11,7 @@ async fn main() {
 
     let manager = tokio::spawn(async move {
         let mut client = Client::connect(DEFAULT_ADDRESS).await.unwrap();
-        client.manage_requests(rx).await;
+        let _ = client.manage_requests(rx).await;
     });
 
     tokio::spawn(async move {

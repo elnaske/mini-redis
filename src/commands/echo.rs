@@ -1,5 +1,5 @@
 use super::as_bulk_string;
-use crate::resp::errors::{RESPError, RESPResult};
+use crate::resp::error::{RESPError, RESPResult};
 use crate::resp::parse::RESPType;
 
 #[derive(Debug, PartialEq)]
